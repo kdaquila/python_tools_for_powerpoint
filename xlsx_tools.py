@@ -1,13 +1,14 @@
 import os
 import pptx
-from pptx.util import Inches
+import re
+from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 import openpyxl
 from openpyxl.styles.colors import COLOR_INDEX
 
 
 def open_excel_file(excel_file_path):
-    return openpyxl.load_workbook(filename='data/sample_data.xlsx')
+    return openpyxl.load_workbook(filename=excel_file_path)
 
 
 def load_office_theme_colors():
@@ -76,7 +77,7 @@ def load_office_theme_colors():
 
 def find_theme_color_hex(theme_id, tint, theme_colors):
     for color in theme_colors:
-        if color['theme_id'] == theme_id and color['tint'] == round(tint,2):
+        if color['theme_id'] == theme_id and color['tint'] == round(tint, 2):
             return color['hex']
     return None
 
@@ -137,12 +138,57 @@ def get_cell_font_color(wb, sheet, cell, theme_colors):
     return get_rbg_from_color_obj(wb[sheet][cell].font.color, theme_colors)
 
 
+def get_cell_font_size(wb, sheet, cell):
+    return wb[sheet][cell].font.sz
+
+
 def get_cell_fill_color(wb, sheet, cell, theme_colors):
     return get_rbg_from_color_obj(wb[sheet][cell].fill.fgColor, theme_colors)
 
 
+def get_conditional_color(value_str, col):
+
+    if col == 1:
+        if re.fullmatch('[0-9]+ Days', value_str) is None:
+            return None
+        num_days = int(value_str.split(" ")[0])
+        if num_days >= 7:
+            return 'FF0000'
+        elif num_days >= 5:
+            return '0070C0'
+
+    elif col == 2:
+        if re.fullmatch('[0-9]+ Days', value_str) is None:
+            return None
+        num_days = int(value_str.split(" ")[0])
+        if num_days >= 3:
+            return 'FF0000'
+        elif num_days >= 2:
+            return '0070C0'
+
+    elif col in (3, 4):
+        if re.fullmatch('[0-9]+.[0-9]+%', value_str) is None:
+            return None
+        float_value = float(value_str.split("%")[0])
+        if float_value >= 8.0:
+            return 'FF0000'
+        elif float_value >= 7.0:
+            return '0070C0'
+
+    elif col == 5:
+        if re.fullmatch('[0-9]+ Days', value_str) is None:
+            return None
+        num_days = int(value_str.split(" ")[0])
+        if num_days >= 7:
+            return 'FF0000'
+        elif num_days >= 5:
+            return '0070C0'
+
+    return None
+
+
 def insert_excel_range(prs, excel_file_path, sheet=0, col_start='A', col_stop='B', row_start=1, row_stop=2,
-                       slide_num=0, top_inch=1, left_inch=1, width_inch=3, height_inch=3):
+                       slide_num=0, top_inch=1, left_inch=1, width_inch=3, height_inch=3, font_size_factor=1.0):
     # Open the Excel File
     wb = open_excel_file(excel_file_path)
 
@@ -158,47 +204,59 @@ def insert_excel_range(prs, excel_file_path, sheet=0, col_start='A', col_stop='B
 
     # Merge ranges as needed
     for merge_range in wb[sheet].merged_cells.ranges:
+
         merge_range_bounds = merge_range.bounds
         top_left_col = merge_range_bounds[0] - 1 - (ord(col_start) - ord('A'))
         top_left_row = merge_range_bounds[1] - row_start
         bottom_right_col = merge_range_bounds[2] - 1 - (ord(col_start) - ord('A'))
         bottom_right_row = merge_range_bounds[3] - row_start
 
-        origin_cell = table.table.cell(top_left_row, top_left_col)
-        other_cell = table.table.cell(bottom_right_row, bottom_right_col)
+        if (top_left_col >= 0 and
+                top_left_row >= 0 and
+                bottom_right_col <= (ord(col_stop) - ord(col_start)) and
+                bottom_right_row <= (row_stop - row_start)):
 
-        origin_cell.merge(other_cell)
+            origin_cell = table.table.cell(top_left_row, top_left_col)
+            other_cell = table.table.cell(bottom_right_row, bottom_right_col)
+            origin_cell.merge(other_cell)
 
     # Fill the powerpoint table cell-by-cell
     for row in range(row_start - row_start, row_stop - row_start + 1):
-        for col in range(ord(col_start) - ord('A'), ord(col_stop) - ord('A') + 1):
-
-            excel_col_letter = chr(col + ord('A'))
+        for col in range(0, ord(col_stop) - ord(col_start) + 1):
+            excel_col_letter = chr((col + ord(col_start) - ord('A')) + ord('A'))
             excel_row_num = row + row_start
-            cell_ref = excel_col_letter + str(excel_row_num)
+            cell_ref = str(excel_col_letter) + str(excel_row_num)
 
             # Get the excel cell value
             cell_value = get_cell_value(wb, sheet, cell_ref)
 
-            # Get the excel cell font color
-            cell_font_color = get_cell_font_color(wb, sheet, cell_ref, office_theme_colors)
-
-            # Get the excel cell fill color
-            cell_fill_color = get_cell_fill_color(wb, sheet, cell_ref, office_theme_colors)
-
             # Set the cell value
             table.table.cell(row, col).text = cell_value
 
+            # Get the excel cell font color
+            cell_font_color = get_cell_font_color(wb, sheet, cell_ref, office_theme_colors)
+
+            # Get the excel cell's conditional color
+            cell_cond_font_color = get_conditional_color(cell_value, col)
+            if cell_cond_font_color is not None:
+                cell_font_color = cell_cond_font_color
+
             # Transfer font color
-            table.table.cell(row, col).text_frame.paragraphs[0].runs[0].font.color.rgb = RGBColor.from_string(
-                cell_font_color)
+            for para in table.table.cell(row, col).text_frame.paragraphs:
+                for run in para.runs:
+                    run.font.color.rgb = RGBColor.from_string(cell_font_color)
+
+            # Get the excel cell fill color
+            cell_fill_color = get_cell_fill_color(wb, sheet, cell_ref, office_theme_colors)
 
             # Transfer fill color
             table.table.cell(row, col).fill.solid()
             table.table.cell(row, col).fill.fore_color.rgb = RGBColor.from_string(cell_fill_color)
 
-
-
+            # Transfer the font size
+            cell_font_size = get_cell_font_size(wb, sheet, cell_ref)
+            for para in table.table.cell(row, col).text_frame.paragraphs:
+                for run in para.runs:
+                    run.font.size = Pt(int(round(cell_font_size * font_size_factor)))
 
     return prs
-
