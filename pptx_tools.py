@@ -12,3 +12,8 @@ def load_pptx_file(pptx_file_path):
         return None
 
 
+def insert_slide_notes(prs, slide_num, notes_text):
+    prs.slides[slide_num].notes_slide.notes_text_frame.text = notes_text
+    return prs
+
+

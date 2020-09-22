@@ -3,8 +3,11 @@ import pptx
 import re
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
+from pptx.enum.text import PP_PARAGRAPH_ALIGNMENT
+
 import openpyxl
 from openpyxl.styles.colors import COLOR_INDEX
+
 
 
 def open_excel_file(excel_file_path):
@@ -134,6 +137,10 @@ def get_cell_value(wb, sheet, cell):
     return str(wb[sheet][cell].value)
 
 
+def get_cell_alignment(wb, sheet, cell):
+    return wb[sheet][cell].alignment.horizontal
+
+
 def get_cell_font_color(wb, sheet, cell, theme_colors):
     return get_rbg_from_color_obj(wb[sheet][cell].font.color, theme_colors)
 
@@ -202,6 +209,13 @@ def insert_excel_range(prs, excel_file_path, sheet=0, col_start='A', col_stop='B
     table = slide.shapes.add_table(rows=num_row, cols=num_col, left=Inches(left_inch), top=Inches(top_inch),
                                    width=Inches(width_inch), height=Inches(height_inch))
 
+    # Turn off special first-row formatting
+    table.table.first_row = False
+
+    # Set minimum row heights
+    for row in table.table.rows:
+        row.height = 0
+
     # Merge ranges as needed
     for merge_range in wb[sheet].merged_cells.ranges:
 
@@ -241,10 +255,11 @@ def insert_excel_range(prs, excel_file_path, sheet=0, col_start='A', col_stop='B
             if cell_cond_font_color is not None:
                 cell_font_color = cell_cond_font_color
 
-            # Transfer font color
+            # Transfer font color and set font weight to normal
             for para in table.table.cell(row, col).text_frame.paragraphs:
                 for run in para.runs:
                     run.font.color.rgb = RGBColor.from_string(cell_font_color)
+                    # run.font.bold = False
 
             # Get the excel cell fill color
             cell_fill_color = get_cell_fill_color(wb, sheet, cell_ref, office_theme_colors)
@@ -259,4 +274,17 @@ def insert_excel_range(prs, excel_file_path, sheet=0, col_start='A', col_stop='B
                 for run in para.runs:
                     run.font.size = Pt(int(round(cell_font_size * font_size_factor)))
 
+            # Get cell alignment
+            cell_alignment = get_cell_alignment(wb, sheet, cell_ref)
+
+            # Set cell alignment
+            for para in table.table.cell(row, col).text_frame.paragraphs:
+                if cell_alignment is None:
+                    pass
+                elif cell_alignment.upper() == 'LEFT':
+                    para.alignment = PP_PARAGRAPH_ALIGNMENT.LEFT
+                elif cell_alignment.upper() == 'RIGHT':
+                    para.alignment = PP_PARAGRAPH_ALIGNMENT.RIGHT
+                elif cell_alignment.upper() == 'CENTER':
+                    para.alignment = PP_PARAGRAPH_ALIGNMENT.CENTER
     return prs

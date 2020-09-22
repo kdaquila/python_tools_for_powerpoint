@@ -5,6 +5,7 @@ import xlsx_tools
 import image_tools
 import email_tools
 import os
+import datetime
 
 # Define paths
 pptx_template_path = 'templates/sample_template.pptx'
@@ -33,9 +34,18 @@ slide_num = 4
 table_top = 1
 table_left = 0
 table_width = 13.333
-table_height = 4
+table_height = 5
+font_size_factor = 0.7
 xlsx_tools.insert_excel_range(prs, xls_file_path, sheet, col_start, col_stop, row_start, row_stop,
-                              slide_num, table_top, table_left, table_width, table_height)
+                              slide_num, table_top, table_left, table_width, table_height, font_size_factor)
+
+# Insert notes to slide 5
+slide_num = 4
+today = datetime.datetime.now()
+slide_notes_text = '''
+Today is {0}
+'''.format(today.strftime('%m/%d'))
+pptx_tools.insert_slide_notes(prs, slide_num, slide_notes_text)
 
 # Append multiple image slides
 img_extensions = ['.png', '.jpg', '.tif']
