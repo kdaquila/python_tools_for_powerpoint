@@ -1,5 +1,3 @@
-import os
-import pptx
 import re
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
@@ -7,7 +5,6 @@ from pptx.enum.text import PP_PARAGRAPH_ALIGNMENT
 
 import openpyxl
 from openpyxl.styles.colors import COLOR_INDEX
-
 
 
 def open_excel_file(excel_file_path):
@@ -108,6 +105,13 @@ def is_sheet_cell_ref(obj):
         return False
 
 
+def is_local_cell_ref(obj):
+    if is_indexable(obj) and is_iterable(obj) and obj[0] == '=':
+        return True
+    else:
+        return False
+
+
 def get_rbg_from_color_obj(color_obj, theme_colors):
     if color_obj is None:
         return None
@@ -133,8 +137,14 @@ def get_cell_value(wb, sheet, cell):
     if is_sheet_cell_ref(cell_raw_value):
         (sheet, cell) = cell_raw_value.strip("=").split("!")
         sheet = sheet.strip("'")
+        return get_cell_value(wb, sheet, cell)
 
-    return str(wb[sheet][cell].value)
+    elif is_local_cell_ref(cell_raw_value):
+        cell = cell_raw_value.strip("=")
+        return get_cell_value(wb, sheet, cell)
+
+    else:
+        return str(wb[sheet][cell].value)
 
 
 def get_cell_alignment(wb, sheet, cell):
@@ -153,52 +163,8 @@ def get_cell_fill_color(wb, sheet, cell, theme_colors):
     return get_rbg_from_color_obj(wb[sheet][cell].fill.fgColor, theme_colors)
 
 
-def get_conditional_color(value_str, col):
-
-    if col == 1:
-        if re.fullmatch('[0-9]+ Days', value_str) is None:
-            return None
-        num_days = int(value_str.split(" ")[0])
-        if num_days >= 7:
-            return 'FF0000'
-        elif num_days >= 5:
-            return '0070C0'
-
-    elif col == 2:
-        if re.fullmatch('[0-9]+ Days', value_str) is None:
-            return None
-        num_days = int(value_str.split(" ")[0])
-        if num_days >= 3:
-            return 'FF0000'
-        elif num_days >= 2:
-            return '0070C0'
-
-    elif col in (3, 4):
-        if re.fullmatch('[0-9]+.[0-9]+%', value_str) is None:
-            return None
-        float_value = float(value_str.split("%")[0])
-        if float_value >= 8.0:
-            return 'FF0000'
-        elif float_value >= 7.0:
-            return '0070C0'
-
-    elif col == 5:
-        if re.fullmatch('[0-9]+ Days', value_str) is None:
-            return None
-        num_days = int(value_str.split(" ")[0])
-        if num_days >= 7:
-            return 'FF0000'
-        elif num_days >= 5:
-            return '0070C0'
-
-    return None
-
-
-def insert_excel_range(prs, excel_file_path, sheet=0, col_start='A', col_stop='B', row_start=1, row_stop=2,
+def insert_excel_range(prs, wb, sheet=0, col_start='A', col_stop='B', row_start=1, row_stop=2,
                        slide_num=0, top_inch=1, left_inch=1, width_inch=3, height_inch=3, font_size_factor=1.0):
-    # Open the Excel File
-    wb = open_excel_file(excel_file_path)
-
     # Load the office theme colors
     office_theme_colors = load_office_theme_colors()
 
@@ -229,7 +195,6 @@ def insert_excel_range(prs, excel_file_path, sheet=0, col_start='A', col_stop='B
                 top_left_row >= 0 and
                 bottom_right_col <= (ord(col_stop) - ord(col_start)) and
                 bottom_right_row <= (row_stop - row_start)):
-
             origin_cell = table.table.cell(top_left_row, top_left_col)
             other_cell = table.table.cell(bottom_right_row, bottom_right_col)
             origin_cell.merge(other_cell)
@@ -249,11 +214,6 @@ def insert_excel_range(prs, excel_file_path, sheet=0, col_start='A', col_stop='B
 
             # Get the excel cell font color
             cell_font_color = get_cell_font_color(wb, sheet, cell_ref, office_theme_colors)
-
-            # Get the excel cell's conditional color
-            cell_cond_font_color = get_conditional_color(cell_value, col)
-            if cell_cond_font_color is not None:
-                cell_font_color = cell_cond_font_color
 
             # Transfer font color and set font weight to normal
             for para in table.table.cell(row, col).text_frame.paragraphs:
@@ -287,4 +247,40 @@ def insert_excel_range(prs, excel_file_path, sheet=0, col_start='A', col_stop='B
                     para.alignment = PP_PARAGRAPH_ALIGNMENT.RIGHT
                 elif cell_alignment.upper() == 'CENTER':
                     para.alignment = PP_PARAGRAPH_ALIGNMENT.CENTER
+    return prs
+
+
+def parse_range_notation(range_str):
+    col_start, row_start, col_stop, row_stop = re.match(r"([A-Z]+)([0-9]+):([A-Z]+)([0-9]+)", range_str).groups()
+    return col_start, int(row_start), col_stop, int(row_stop)
+
+
+def copy_range_to_table(prs, wb, sheet=0, range_str="A1:B2", slide_num=0, shape_id=0):
+
+    # Extract range info
+    col_start, row_start, col_stop, row_stop = parse_range_notation(range_str)
+
+    # Load the office theme colors
+    office_theme_colors = load_office_theme_colors()
+
+    # Find the empty powerpoint table
+    slide = prs.slides[slide_num]
+    table = slide.shapes[shape_id]
+
+    # Turn off special first-row formatting
+    table.table.first_row = False
+
+    # Fill the powerpoint table cell-by-cell
+    for row in range(0, row_stop - row_start + 1):
+        for col in range(0, ord(col_stop) - ord(col_start) + 1):
+
+            # Build the cell reference string
+            excel_col_letter = chr(col + ord(col_start))
+            excel_row_num = row + row_start
+            cell_ref = str(excel_col_letter) + str(excel_row_num)
+
+            # Transfer cell value
+            cell_value = get_cell_value(wb, sheet, cell_ref)
+            table.table.cell(row, col).text_frame.paragraphs[0].runs[0].text = cell_value
+
     return prs
