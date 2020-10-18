@@ -260,9 +260,6 @@ def copy_range_to_table(prs, wb, sheet=0, range_str="A1:B2", slide_num=0, shape_
     # Extract range info
     col_start, row_start, col_stop, row_stop = parse_range_notation(range_str)
 
-    # Load the office theme colors
-    office_theme_colors = load_office_theme_colors()
-
     # Find the empty powerpoint table
     slide = prs.slides[slide_num]
     table = slide.shapes[shape_id]
