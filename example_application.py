@@ -18,7 +18,7 @@ def generate_image_slide_notes(filename):
             [{'text': ""}],
             [{'text': "Another bold heading", 'bold': True}],
             [{'text': "Sample Text"}],
-            [{'text': "Range of the last 3 days ({1} – {0})".format(
+            [{'text': "Range of the last 10 days ({1} – {0})".format(
                 (today - datetime.timedelta(days=1)).strftime('%m/%d'),
                 (today - datetime.timedelta(days=10)).strftime('%m/%d'))}],
         ]
